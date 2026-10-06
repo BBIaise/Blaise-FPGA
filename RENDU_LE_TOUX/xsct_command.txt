@@ -1,0 +1,65 @@
+Toutes les commandes se tapent dans la console XSCT de Vitis. 
+Le Hardware Manager de Vivado doit etre ferme : le cable JTAG est une ressource unique.
+
+connect
+	ouvre la session JTAG avec la carte
+
+targets
+      	liste les cibles disponibles : les deux coeurs ARM et le FPGA
+
+targets -set -nocase -filter {name =~ "ARM*#0"}
+      	sélectionne le coeur 0 ; les commandes suivantes s'y appliquent
+
+rst -system
+      	reset complet du systeme. Attendre 3 a 4 secondes.
+
+targets -set -filter {name =~ "xc7z010"}
+      	bascule sur le FPGA lui-meme
+
+fpga -file <chemin>/top.bit
+      	charge le bitstream dans la logique programmable
+
+targets -set -nocase -filter {name =~ "ARM*#0"}
+      	retour sur le coeur ARM
+
+dow <chemin>/main_app.elf
+      	charge l'application de calibration en memoire interne
+
+con
+      	l'execute : ps7_init, ps7_post_config, puis desactivation du cache de
+      	donnees. Attendre 3 secondes.
+
+stop
+      	arrêt du coeur, opération necessaire pour que le debogueur écrive en memoire de
+      	façon fiable
+
+dow -data <chemin>/sample_in_rgb.bin 0x01000000
+      	écrit les 921 600 octets de l'image a l'adresse que le DMA ira lire.
+      	Cette adresse est figée dans dma_video_src.vhd.
+
+mrd 0x01000000 1        debut de l'image      attendu  D6F9E3D7
+mrd 0x01070800 1        debut de la ligne 240 attendu  BAFCD5BB
+mrd 0x010E0FF0 1        fin de l'image        attendu  FDEEEFFD
+      	relecture de trois points de contrôle, comparée aux valeurs calculées
+      	depuis le fichier source
+
+con
+      	relance le coeur
+
+
+Sur la carte : appuyer sur BTN1 puis relacher, attendre 30 secondes.
+C'est l'impulsion de reset qui relance le DMA une fois la memoire prète.
+Elle est necessaire parce que le signal ap_start du DMA est cable en
+permanence : il tente de lire la DDR des la configuration du FPGA, avant que
+l'image n'y soit écrite.
+
+Les quatre modes d'affichage, par écriture dans le registre de commande :
+
+  mwr -force 0x41200000 0     mire TPG, en couleur
+  mwr -force 0x41200000 1     image de la DDR, en couleur
+  mwr -force 0x41200000 2     mire TPG, contours binarises
+  mwr -force 0x41200000 3     image de la DDR, contours binarises
+
+
+L'option -force n'apparait que sur ces dernieres commandes. Les adresses en
+0x010... sont en DDR.  XSCT refuse d'y écrire sans cette option. 
